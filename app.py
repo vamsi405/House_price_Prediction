@@ -1,51 +1,68 @@
 import streamlit as st
-import pickle
+import pandas as pd
 import numpy as np
 import os
-from sklearn.datasets import fetch_california_housing
-from sklearn.linear_model import LinearRegression
+import pickle
 from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+MODEL_PATH = "model.pkl"
+DATA_PATH = "data/housing.csv"
 
 # -------------------------
 # Train model if not exists
 # -------------------------
-if not os.path.exists("model.pkl"):
-    data = fetch_california_housing()
-    X = data.data
-    y = data.target
+@st.cache_resource
+def train_model():
+    df = pd.read_csv(DATA_PATH)
+
+    X = df.drop("price", axis=1)
+    y = df["price"]
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
-    model = LinearRegression()
-    model.fit(X_train, y_train)
+    pipeline = Pipeline([
+        ("scaler", StandardScaler()),
+        ("model", LinearRegression())
+    ])
 
-    with open("model.pkl", "wb") as f:
-        pickle.dump(model, f)
+    pipeline.fit(X_train, y_train)
+
+    with open(MODEL_PATH, "wb") as f:
+        pickle.dump(pipeline, f)
+
+    return pipeline
+
+
+if not os.path.exists(MODEL_PATH):
+    model = train_model()
+else:
+    with open(MODEL_PATH, "rb") as f:
+        model = pickle.load(f)
+
 
 # -------------------------
-# Load model
+# STREAMLIT UI
 # -------------------------
-model = pickle.load(open("model.pkl", "rb"))
 
-st.title("🏠 House Price Prediction App")
+st.title("🏠 House Price Prediction")
 
 st.write("Enter house details below:")
 
-MedInc = st.number_input("Median Income", min_value=0.0)
-HouseAge = st.number_input("House Age", min_value=0.0)
-AveRooms = st.number_input("Average Rooms", min_value=0.0)
-AveBedrms = st.number_input("Average Bedrooms", min_value=0.0)
-Population = st.number_input("Population", min_value=0.0)
-AveOccup = st.number_input("Average Occupancy", min_value=0.0)
-Latitude = st.number_input("Latitude")
-Longitude = st.number_input("Longitude")
+df = pd.read_csv(DATA_PATH)
+feature_columns = df.drop("price", axis=1).columns
+
+input_data = []
+
+for col in feature_columns:
+    value = st.number_input(f"{col}")
+    input_data.append(value)
 
 if st.button("Predict Price"):
-    features = np.array([[MedInc, HouseAge, AveRooms, AveBedrms,
-                          Population, AveOccup, Latitude, Longitude]])
-    
+    features = np.array([input_data])
     prediction = model.predict(features)
-    st.success(f"Predicted House Price: ${prediction[0]*100000:.2f}")
-
+    st.success(f"Predicted Price: {prediction[0]:,.2f}")
